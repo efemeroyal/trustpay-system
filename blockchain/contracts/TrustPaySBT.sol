@@ -57,6 +57,15 @@ contract TrustPaySBT is ERC721URIStorage, Ownable, IERC5192 {
      * @dev Overriding transfer functions to prevent movement.
      * This makes the token "Soulbound".
      */
+
+    function _transfer(
+        address from,
+        address to,
+        uint256 tokenId
+    ) internal override(ERC721) {
+        revert("TrustPay: Receipts are Soulbound and non-transferable.");
+    }
+
     function transferFrom(
         address from,
         address to,

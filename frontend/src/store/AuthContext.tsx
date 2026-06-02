@@ -24,12 +24,12 @@ const AuthContext = createContext<AuthState | null>(null);
 // Mock student data — replace with real API call
 const MOCK_STUDENT: Student = {
   id: "UB22CS041",
-  name: "Akosua Kwame",
+  name: "Royal Tk",
   faculty: "Faculty of Engineering & Technology",
-  level: "Level 300",
+  level: "Level 400",
   university: "University of Buea",
   walletAddress: null,
-  avatarInitials: "AK",
+  avatarInitials: "TK",
 };
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -97,7 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 }
 
 export function useAuth() {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be inside AuthProvider");
-  return ctx;
+  const context = useContext(AuthContext);
+  if (!context) throw new Error("useAuth must be inside AuthProvider");
+  return context;
 }
