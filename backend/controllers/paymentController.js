@@ -1,3 +1,10 @@
+// CommonJS can't "require" an ESM file — must use dynamic import
+const mintReceiptOnChain = async (...args) => {
+  const { mintReceiptOnChain } =
+    await import("../../blockchain/services/mintService.mjs");
+  return mintReceiptOnChain(...args);
+};
+
 const Payment = require("../models/Payment");
 const Receipt = require("../models/Receipt");
 const {
