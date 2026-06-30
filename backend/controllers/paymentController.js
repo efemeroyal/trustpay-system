@@ -105,6 +105,7 @@ const initiatePayment = async (req, res) => {
     const mintResult = await mintReceiptOnChain(
       req.user.walletAddress,
       placeholderCID,
+      payment.transactionReference,
     );
 
     if (mintResult.success) {
