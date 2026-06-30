@@ -1,18 +1,13 @@
-// CommonJS can't "require" an ESM file — must use dynamic import
-const mintReceiptOnChain = async (...args) => {
-  const { mintReceiptOnChain } =
-    await import("../../blockchain/services/mintService.mjs");
-  return mintReceiptOnChain(...args);
-};
-
 const Payment = require("../models/Payment");
 const Receipt = require("../models/Receipt");
+const SBTRecord = require("../models/SBTRecord");
 const {
   generateReceiptId,
   generateReferenceNumber,
   generateTransactionReference,
 } = require("../utils/generateReceipt");
 const { generateQRCode } = require("../utils/generateQR");
+const { mintReceiptOnChain } = require("../utils/blockchainBridge");
 
 const simulateMoMoPayment = () => {
   const outcomes = ["success", "success", "success", "failed"];
@@ -30,7 +25,6 @@ const initiatePayment = async (req, res) => {
     momoNumber,
   } = req.body;
 
-  // Duplicate request check — same student, same payment type, same academic year within 60 seconds
   const recentPayment = await Payment.findOne({
     student: req.user._id,
     paymentType,
@@ -48,7 +42,6 @@ const initiatePayment = async (req, res) => {
 
   const transactionReference = generateTransactionReference();
 
-  // Optimistic recording — save as pending first
   const payment = await Payment.create({
     student: req.user._id,
     studentId: req.user.studentId,
@@ -63,7 +56,6 @@ const initiatePayment = async (req, res) => {
     transactionReference,
   });
 
-  // Simulate MoMo transaction
   const momoResult = simulateMoMoPayment();
 
   if (momoResult === "failed") {
@@ -74,7 +66,6 @@ const initiatePayment = async (req, res) => {
     throw new Error("Payment failed. Please try again.");
   }
 
-  // Payment succeeded — generate receipt
   payment.status = "success";
   await payment.save();
 
@@ -107,6 +98,41 @@ const initiatePayment = async (req, res) => {
     level: level || req.user.level,
   });
 
+  // ── Mint the SBT receipt on-chain using the student's custodial wallet ────
+  let sbtRecord;
+  if (req.user.walletAddress) {
+    const placeholderCID = `placeholder-${receipt.receiptId.substring(0, 16)}`;
+    const mintResult = await mintReceiptOnChain(
+      req.user.walletAddress,
+      placeholderCID,
+    );
+
+    if (mintResult.success) {
+      sbtRecord = await SBTRecord.create({
+        receipt: receipt._id,
+        student: req.user._id,
+        studentId: req.user.studentId,
+        tokenId: mintResult.tokenId,
+        transactionHash: mintResult.transactionHash,
+        contractAddress: mintResult.contractAddress,
+        mintStatus: "minted",
+        mintedAt: new Date(),
+      });
+    } else {
+      sbtRecord = await SBTRecord.create({
+        receipt: receipt._id,
+        student: req.user._id,
+        studentId: req.user.studentId,
+        mintStatus: "failed",
+      });
+      console.error("SBT minting failed:", mintResult.error);
+    }
+  } else {
+    console.warn(
+      `Student ${req.user.studentId} has no wallet address — skipping mint`,
+    );
+  }
+
   res.status(201).json({
     success: true,
     message: "Payment successful. Receipt generated.",
@@ -117,6 +143,13 @@ const initiatePayment = async (req, res) => {
       academicYear: receipt.academicYear,
       qrCode: receipt.qrCodeData,
       createdAt: receipt.createdAt,
+      sbt: sbtRecord
+        ? {
+            tokenId: sbtRecord.tokenId,
+            transactionHash: sbtRecord.transactionHash,
+            mintStatus: sbtRecord.mintStatus,
+          }
+        : null,
     },
   });
 };

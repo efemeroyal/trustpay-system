@@ -12,6 +12,8 @@ const userSchema = new mongoose.Schema(
     level: { type: String, enum: ["Year 1", "Year 2", "Year 3", "Year 4"] },
     department: { type: String },
     isActive: { type: Boolean, default: true },
+    walletAddress: { type: String },
+    walletPrivateKey: { type: String },
   },
   { timestamps: true },
 );

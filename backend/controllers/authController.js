@@ -1,3 +1,5 @@
+const { generateWallet } = require("../utils/blockchainBridge");
+
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 
@@ -14,6 +16,9 @@ const registerStudent = async (req, res) => {
     res.status(400);
     throw new Error("A user with this email already exists");
   }
+
+  const wallet = await generateWallet();
+
   const user = await User.create({
     fullName,
     email,
@@ -22,7 +27,10 @@ const registerStudent = async (req, res) => {
     studentId,
     programme,
     level,
+    walletAddress: wallet.address,
+    walletPrivateKey: wallet.privateKey,
   });
+
   res.status(201).json({
     success: true,
     data: {
@@ -31,6 +39,7 @@ const registerStudent = async (req, res) => {
       email: user.email,
       role: user.role,
       studentId: user.studentId,
+      walletAddress: user.walletAddress,
       token: generateToken(user._id),
     },
   });
