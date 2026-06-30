@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "compile": "npx hardhat compile",
-    "test": "npx hardhat test",
+    "node": "npx hardhat node",
+    "test": "node --test test/TrustPaySBT.test.js",
     "deploy:local": "npx hardhat ignition deploy ignition/modules/TrustPay.ts --network localhost",
     "deploy": "npx hardhat ignition deploy ignition/modules/TrustPay.ts --network polygonAmoy"
   },
@@ -13,9 +14,11 @@
     "@nomicfoundation/hardhat-toolbox-viem": "^5.0.5",
     "@openzeppelin/contracts": "^5.6.1",
     "@types/node": "^22.19.18",
-    "forge-std": "github:foundry-rs/forge-std#v1.9.4",
     "hardhat": "^3.4.5",
     "typescript": "~5.8.0",
-    "viem": "^2.48.11"
+    "viem": "^2.53.1"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2"
   }
 }
