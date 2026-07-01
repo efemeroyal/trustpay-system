@@ -1,5 +1,6 @@
 const Receipt = require("../models/Receipt");
 const Payment = require("../models/Payment");
+const RequiredFee = require("../models/RequiredFee"); // ← NEW
 
 const getStudentHistory = async (req, res) => {
   const { academicYear, paymentType } = req.query;
@@ -31,29 +32,49 @@ const getStudentHistoryByAdmin = async (req, res) => {
 const getInstallmentStatus = async (req, res) => {
   const { academicYear } = req.query;
   const studentId = req.user.studentId;
+  const level = req.user.level;
+  const year =
+    academicYear ||
+    `${new Date().getFullYear()}/${new Date().getFullYear() + 1}`;
 
+  // ── Get all successful payments for this student this year ────────────────
   const payments = await Payment.find({
     studentId,
-    academicYear:
-      academicYear ||
-      new Date().getFullYear() + "/" + (new Date().getFullYear() + 1),
+    academicYear: year,
     status: "success",
   });
 
-  const installmentMap = {};
+  // ── Group payments by type and sum their amounts ──────────────────────────
+  const paidByType = {};
   payments.forEach((p) => {
-    const key = p.paymentType;
-    if (!installmentMap[key])
-      installmentMap[key] = { paid: 0, total: p.installment.total };
-    installmentMap[key].paid += 1;
+    if (!paidByType[p.paymentType]) paidByType[p.paymentType] = 0;
+    paidByType[p.paymentType] += p.amount;
   });
 
-  const status = Object.entries(installmentMap).map(([type, info]) => ({
-    paymentType: type,
-    installmentsPaid: info.paid,
-    installmentsTotal: info.total,
-    cleared: info.paid >= info.total,
-  }));
+  // ── Get required fees set by admin for this level and year ────────────────
+  const requiredFees = await RequiredFee.find({ academicYear: year, level });
+
+  // ── Build status per fee type ─────────────────────────────────────────────
+  const status = requiredFees.map((fee) => {
+    const totalPaid = paidByType[fee.paymentType] || 0;
+    const remaining = Math.max(0, fee.requiredAmount - totalPaid);
+    const cleared = totalPaid >= fee.requiredAmount;
+    const progress = Math.min(
+      100,
+      Math.round((totalPaid / fee.requiredAmount) * 100),
+    );
+
+    return {
+      paymentType: fee.paymentType,
+      requiredAmount: fee.requiredAmount,
+      totalPaid,
+      remaining,
+      progress, // percentage paid so far
+      cleared, // true = fully paid
+      academicYear: year,
+      level,
+    };
+  });
 
   res.json({ success: true, data: status });
 };
