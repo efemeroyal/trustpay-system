@@ -21,7 +21,6 @@ const receiptSchema = new mongoose.Schema(
     paymentType: { type: String, required: true },
     academicYear: { type: String, required: true },
     level: { type: String, required: true },
-    ipfsCID: { type: String }, // ← IPFS CID from Pinata upload
     isVerified: { type: Boolean, default: false },
     verifiedAt: { type: Date },
     verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },

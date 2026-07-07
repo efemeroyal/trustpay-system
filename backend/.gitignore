@@ -1,3 +1,4 @@
 node_modules/
 .env
 testMint.js
+utils/ipfsUpload.js

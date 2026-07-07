@@ -1,7 +1,6 @@
 const Payment = require("../models/Payment");
 const Receipt = require("../models/Receipt");
 const SBTRecord = require("../models/SBTRecord");
-const { uploadReceiptToIPFS } = require("../utils/ipfsUpload");
 const {
   generateReceiptId,
   generateReferenceNumber,
@@ -102,28 +101,14 @@ const initiatePayment = async (req, res) => {
   // ── Mint the SBT receipt on-chain using the student's custodial wallet ────
   let sbtRecord;
   if (req.user.walletAddress) {
-    const ipfsCID = await uploadReceiptToIPFS({
-      receiptId: receipt.receiptId,
-      referenceNumber: receipt.referenceNumber,
-      studentId: req.user.studentId,
-      amount,
-      paymentType,
-      academicYear,
-      level: level || req.user.level,
-      issuedAt: receipt.createdAt,
-    });
-
+    const placeholderCID = `placeholder-${receipt.receiptId.substring(0, 16)}`;
     const mintResult = await mintReceiptOnChain(
       req.user.walletAddress,
-      ipfsCID,
+      placeholderCID,
       payment.transactionReference,
     );
 
     if (mintResult.success) {
-      // ← Save CID back to the receipt record
-      receipt.ipfsCID = ipfsCID;
-      await receipt.save();
-
       sbtRecord = await SBTRecord.create({
         receipt: receipt._id,
         student: req.user._id,
