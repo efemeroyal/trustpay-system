@@ -1,3 +1,4 @@
+const { broadcast } = require("../wsServer");
 const Payment = require("../models/Payment");
 const Receipt = require("../models/Receipt");
 const SBTRecord = require("../models/SBTRecord");
@@ -68,6 +69,15 @@ const initiatePayment = async (req, res) => {
 
   payment.status = "success";
   await payment.save();
+  broadcast("payment_confirmed", {
+    paymentId: payment._id,
+    studentId: req.user.studentId,
+    status: payment.status,
+    amount: payment.amount,
+    paymentType: payment.paymentType,
+    academicYear: payment.academicYear,
+    transactionReference: payment.transactionReference,
+  });
 
   const timestamp = payment.createdAt.getTime();
   const receiptId = generateReceiptId(req.user.studentId, amount, timestamp);
@@ -119,6 +129,12 @@ const initiatePayment = async (req, res) => {
         mintStatus: "minted",
         mintedAt: new Date(),
       });
+      broadcast("mint_complete", {
+        receiptId: receipt._id,
+        studentId: req.user.studentId,
+        tokenId: mintResult.tokenId,
+        transactionHash: mintResult.transactionHash,
+      });
     } else {
       sbtRecord = await SBTRecord.create({
         receipt: receipt._id,
@@ -127,6 +143,11 @@ const initiatePayment = async (req, res) => {
         mintStatus: "failed",
       });
       console.error("SBT minting failed:", mintResult.error);
+      broadcast("tx_failed", {
+        receiptId: receipt._id,
+        studentId: req.user.studentId,
+        error: mintResult.error || "Unknown mint failure",
+      });
     }
   } else {
     console.warn(

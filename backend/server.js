@@ -1,10 +1,12 @@
 const express = require("express");
+const http = require("http");
 const dotenv = require("dotenv");
 const cors = require("cors");
 const helmet = require("helmet");
 const morgan = require("morgan");
 const connectDB = require("./config/db");
 const { errorHandler, notFound } = require("./middleware/errorMiddleware");
+const { setupWebsocket } = require("./wsServer");
 
 dotenv.config();
 connectDB();
@@ -34,6 +36,9 @@ app.use(notFound);
 app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+const server = http.createServer(app);
+setupWebsocket(server);
+
+server.listen(PORT, () => {
   console.log(`TrustPay server running on port ${PORT}`);
 });
