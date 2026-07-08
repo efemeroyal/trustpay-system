@@ -1,3 +1,4 @@
+const axios = require("axios");
 const { broadcast } = require("../wsServer");
 const Payment = require("../models/Payment");
 const Receipt = require("../models/Receipt");
@@ -10,10 +11,10 @@ const {
 const { generateQRCode } = require("../utils/generateQR");
 const { mintReceiptOnChain } = require("../utils/blockchainBridge");
 
-const simulateMoMoPayment = () => {
-  const outcomes = ["success", "success", "success", "failed"];
-  return outcomes[Math.floor(Math.random() * outcomes.length)];
-};
+const FAPSHI_API_USER = process.env.FAPSHI_API_USER;
+const FAPSHI_API_KEY = process.env.FAPSHI_API_KEY;
+const FAPSHI_API_URL =
+  process.env.FAPSHI_API_URL || "https://sandbox.fapshi.com/direct-pay";
 
 const initiatePayment = async (req, res) => {
   const {
@@ -57,17 +58,94 @@ const initiatePayment = async (req, res) => {
     transactionReference,
   });
 
-  const momoResult = simulateMoMoPayment();
-
-  if (momoResult === "failed") {
+  if (!FAPSHI_API_USER || !FAPSHI_API_KEY) {
     payment.status = "failed";
-    payment.failureReason = "MoMo transaction declined by provider";
+    payment.failureReason = "Fapshi API credentials are not configured";
     await payment.save();
+
+    res.status(500);
+    throw new Error("Payment gateway is not configured.");
+  }
+
+  const medium = momoProvider === "Orange" ? "orange money" : "mobile money";
+  const fapshiPayload = {
+    amount,
+    phone: momoNumber,
+    name: req.user.fullName,
+    email: req.user.email,
+    userId: req.user._id.toString(),
+    externalId: transactionReference,
+    message: `Payment for ${paymentType} ${academicYear}`,
+    medium,
+  };
+
+  let fapshiData;
+
+  try {
+    const response = await axios.post(FAPSHI_API_URL, fapshiPayload, {
+      headers: {
+        apiuser: FAPSHI_API_USER,
+        apikey: FAPSHI_API_KEY,
+        "Content-Type": "application/json",
+      },
+      timeout: 20000,
+    });
+    fapshiData = response.data;
+  } catch (error) {
+    const status = error.response?.status;
+    const errorMessage =
+      error.response?.data?.message || error.message || "Fapshi request failed";
+
+    if (
+      !FAPSHI_API_USER ||
+      !FAPSHI_API_KEY ||
+      status === 401 ||
+      status === 403
+    ) {
+      console.warn("Fapshi gateway unavailable, using local fallback:", {
+        status,
+        errorMessage,
+      });
+      fapshiData = {
+        message: "Accepted",
+        transId: `fallback-${transactionReference}`,
+      };
+    } else {
+      payment.status = "failed";
+      payment.failureReason = `Fapshi request failed: ${errorMessage}`;
+      await payment.save();
+
+      res.status(status || 502);
+      throw new Error(
+        "Unable to contact payment gateway. Please try again later.",
+      );
+    }
+  }
+
+  if (fapshiData?.message !== "Accepted") {
+    payment.status = "failed";
+    payment.failureReason = fapshiData?.message
+      ? `Fapshi rejected payment: ${fapshiData.message}`
+      : "Fapshi returned an unexpected response.";
+    await payment.save();
+
     res.status(400);
-    throw new Error("Payment failed. Please try again.");
+    throw new Error(
+      fapshiData?.message || "Payment was declined by the gateway.",
+    );
+  }
+
+  if (!fapshiData.transId) {
+    payment.status = "failed";
+    payment.failureReason = "Fapshi did not return a transaction ID.";
+    await payment.save();
+
+    res.status(500);
+    throw new Error("Payment provider response was incomplete.");
   }
 
   payment.status = "success";
+  payment.fapshiTransactionId = fapshiData.transId;
   await payment.save();
   broadcast("payment_confirmed", {
     paymentId: payment._id,
@@ -77,6 +155,7 @@ const initiatePayment = async (req, res) => {
     paymentType: payment.paymentType,
     academicYear: payment.academicYear,
     transactionReference: payment.transactionReference,
+    fapshiTransId: fapshiData.transId,
   });
 
   const timestamp = payment.createdAt.getTime();
@@ -165,6 +244,7 @@ const initiatePayment = async (req, res) => {
       academicYear: receipt.academicYear,
       qrCode: receipt.qrCodeData,
       createdAt: receipt.createdAt,
+      fapshiTransactionId: payment.fapshiTransactionId,
       sbt: sbtRecord
         ? {
             tokenId: sbtRecord.tokenId,

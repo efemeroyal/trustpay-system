@@ -28,6 +28,7 @@ const paymentSchema = new mongoose.Schema(
       default: "pending",
     },
     transactionReference: { type: String, unique: true },
+    fapshiTransactionId: { type: String },
     failureReason: { type: String },
   },
   { timestamps: true },

@@ -1,8 +1,10 @@
 const Receipt = require("../models/Receipt");
 const User = require("../models/User");
+const { broadcast } = require("../wsServer");
 
 const verifyReceipt = async (req, res) => {
   const { referenceNumber, studentId } = req.body;
+  const normalizedStudentId = String(studentId || "").trim();
 
   // Check 1: Does the receipt exist?
   const receipt = await Receipt.findOne({ referenceNumber }).populate(
@@ -20,38 +22,53 @@ const verifyReceipt = async (req, res) => {
   }
 
   // Check 2: Does it belong to this student?
-  if (receipt.studentId !== studentId) {
+  const now = new Date();
+  if (receipt.studentId !== normalizedStudentId) {
+    receipt.verificationStatus = "rejected";
+    receipt.rejectedAt = now;
+    receipt.rejectionReason =
+      "Receipt does not belong to this student. Possible fraud attempt.";
+    receipt.isVerified = false;
+    receipt.isDuplicate = false;
+    await receipt.save();
+
+    broadcast("receipt_rejected", {
+      studentId: receipt.studentId,
+      referenceNumber: receipt.referenceNumber,
+      reason: receipt.rejectionReason,
+    });
+
     return res.status(403).json({
       success: false,
       status: "INVALID",
-      message:
-        "Receipt does not belong to this student. Possible fraud attempt.",
+      message: receipt.rejectionReason,
     });
   }
 
-  // Check 3: Has it already been verified?
-  if (receipt.isVerified) {
-    return res.status(400).json({
-      success: false,
-      status: "DUPLICATE",
-      message: "This receipt has already been verified.",
-      data: {
-        verifiedAt: receipt.verifiedAt,
-        referenceNumber: receipt.referenceNumber,
-      },
-    });
-  }
-
-  // All checks passed — mark as verified
   receipt.isVerified = true;
-  receipt.verifiedAt = new Date();
+  receipt.verificationStatus = "validated";
+  receipt.verifiedAt = now;
+  receipt.rejectedAt = undefined;
+  receipt.rejectionReason = undefined;
   receipt.verifiedBy = req.user._id;
+  receipt.verificationCount = (receipt.verificationCount || 0) + 1;
+  receipt.isDuplicate = false;
   await receipt.save();
+
+  broadcast("receipt_validated", {
+    studentId: receipt.studentId,
+    referenceNumber: receipt.referenceNumber,
+    amount: receipt.amount,
+    paymentType: receipt.paymentType,
+  });
 
   res.json({
     success: true,
     status: "VALID",
-    message: "Receipt successfully verified.",
+    message:
+      receipt.verificationCount > 1
+        ? "Receipt verification refreshed successfully."
+        : "Receipt successfully verified.",
     data: {
       referenceNumber: receipt.referenceNumber,
       studentName: receipt.student.fullName,
@@ -61,6 +78,7 @@ const verifyReceipt = async (req, res) => {
       academicYear: receipt.academicYear,
       level: receipt.level,
       verifiedAt: receipt.verifiedAt,
+      verificationCount: receipt.verificationCount,
     },
   });
 };
