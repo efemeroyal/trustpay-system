@@ -1,108 +1,103 @@
-import React, { useState, useRef, useEffect } from 'react'
-import { gsap } from 'gsap'
-import { Lock, User, Hexagon, ArrowRight, AlertCircle } from 'lucide-react'
-import { Input } from '@/components/ui/Input'
-import { Button } from '@/components/ui/Button'
-import { useAuth } from '@/store/AuthContext'
+import React, { useState, useEffect, useRef } from "react";
+import { Link, useNavigate, useLocation } from "react-router-dom";
+import { gsap } from "gsap";
+import { Mail, Lock, Eye, EyeOff } from "lucide-react";
+import { useAuth } from "@/store/AuthContext";
+import { Button, Input, Card, CardBody } from "@/components/ui";
 
 export function LoginPage() {
-  const [studentId, setStudentId] = useState('')
-  const [password, setPassword] = useState('')
-  const { login, isConnecting, error } = useAuth()
+  const { login, isLoading, error, clearError, isAuthenticated } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const from = (location.state as { from?: { pathname: string } })?.from?.pathname ?? "/dashboard";
 
-  const logoRef = useRef<HTMLDivElement>(null)
-  const formRef = useRef<HTMLDivElement>(null)
-  const bgRef = useRef<HTMLDivElement>(null)
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPass, setShowPass] = useState(false);
+  const formRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const tl = gsap.timeline()
-    tl.fromTo(bgRef.current, { opacity: 0 }, { opacity: 1, duration: 1.2 })
-    tl.fromTo(logoRef.current, { y: -30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.7, ease: 'back.out(1.5)' }, 0.3)
-    tl.fromTo(formRef.current, { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: 'power3.out' }, 0.5)
-  }, [])
+    if (isAuthenticated) navigate(from, { replace: true });
+  }, [isAuthenticated, navigate, from]);
+
+  useEffect(() => {
+    gsap.fromTo(formRef.current,
+      { y: 16, opacity: 0 },
+      { y: 0, opacity: 1, duration: 0.5, ease: "power3.out" }
+    );
+  }, []);
+
+  useEffect(() => { if (error) clearError(); }, [email, password]);
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    await login(studentId, password)
-  }
+    e.preventDefault();
+    try {
+      await login(email, password);
+      navigate(from, { replace: true });
+    } catch {}
+  };
 
   return (
-    <div className="min-h-screen bg-[#080a0e] flex flex-col items-center justify-center px-4 relative overflow-hidden">
-      {/* Ambient background */}
-      <div ref={bgRef} className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full"
-          style={{ background: 'radial-gradient(circle, rgba(0,229,160,0.04) 0%, transparent 70%)' }} />
-        <div className="absolute bottom-0 right-0 w-[400px] h-[400px] rounded-full"
-          style={{ background: 'radial-gradient(circle, rgba(79,156,249,0.04) 0%, transparent 70%)' }} />
-        {/* Grid */}
-        <div className="absolute inset-0 sbt-grid-bg opacity-40" />
-      </div>
-
-      <div className="relative z-10 w-full max-w-[380px]">
-        {/* Logo */}
-        <div ref={logoRef} className="flex flex-col items-center mb-8">
-          <div className="w-14 h-14 bg-[#00e5a0] rounded-2xl flex items-center justify-center mb-4"
-            style={{ boxShadow: '0 0 40px rgba(0,229,160,0.25)' }}>
-            <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-              <path d="M14 3L24 8.5V19.5L14 25L4 19.5V8.5L14 3Z" stroke="#050708" strokeWidth="2" fill="none"/>
-              <circle cx="14" cy="14" r="4" fill="#050708"/>
-            </svg>
+    <div ref={formRef}>
+      <Card>
+        <CardBody className="p-6">
+          <div className="mb-6">
+            <h1 className="text-[20px] font-semibold tracking-tight">Sign in</h1>
+            <p className="text-[13px] text-[#8b8fa8] mt-1">Enter your registered email and password</p>
           </div>
-          <h1 className="font-mono font-bold text-2xl tracking-tight">
-            Trust<span className="text-[#00e5a0]">Pay</span>
-          </h1>
-          <p className="text-[13px] text-[#8b8fa8] mt-1.5 text-center">
-            Blockchain-verified payment receipts<br/>for University of Buea
-          </p>
-        </div>
-
-        {/* Form */}
-        <div ref={formRef} className="bg-[#0f1117] border border-[rgba(255,255,255,0.08)] rounded-2xl p-6">
-          <h2 className="text-[15px] font-semibold mb-5 text-[#e8eaf0]">Sign in to your account</h2>
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <Input
-              label="Student ID"
-              placeholder="e.g. UB22CS041"
-              value={studentId}
-              onChange={e => setStudentId(e.target.value)}
-              icon={<User className="w-4 h-4" />}
+              label="Email Address"
+              type="email"
+              placeholder="your@email.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              icon={<Mail className="w-4 h-4" />}
               required
-            />
-            <Input
-              label="Password"
-              type="password"
-              placeholder="••••••••"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              icon={<Lock className="w-4 h-4" />}
-              required
+              autoComplete="email"
             />
 
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11.5px] font-mono uppercase tracking-wide text-[#8b8fa8]">Password</label>
+              <div className="relative">
+                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8b8fa8]" />
+                <input
+                  type={showPass ? "text" : "password"}
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                  className="w-full bg-[#0f1420] border border-[rgba(255,255,255,0.08)] rounded-xl text-[13.5px] text-[#e8eaf0] placeholder:text-[#3e4155] pl-10 pr-10 py-3 focus:outline-none focus:border-[rgba(0,229,160,0.4)] focus:ring-1 focus:ring-[rgba(0,229,160,0.2)] transition-all"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPass(!showPass)}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#3e4155] hover:text-[#8b8fa8]"
+                >
+                  {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
             {error && (
-              <div className="flex items-center gap-2 text-xs text-[#ff5757] bg-[rgba(255,87,87,0.08)] border border-[rgba(255,87,87,0.2)] rounded-lg p-2.5">
-                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
-                {error}
+              <div className="bg-[rgba(255,87,87,0.08)] border border-[rgba(255,87,87,0.2)] rounded-xl px-4 py-3">
+                <p className="text-[12.5px] text-[#ff5757]">{error}</p>
               </div>
             )}
 
-            <Button type="submit" size="lg" loading={isConnecting} icon={<ArrowRight className="w-4 h-4" />} className="mt-1 w-full justify-between">
+            <Button type="submit" size="lg" loading={isLoading} className="w-full justify-center mt-1">
               Sign In
             </Button>
           </form>
 
-          <p className="text-[11px] text-[#3e4155] text-center mt-5 font-mono">
-            Demo: use any Student ID (6+ chars) + any password
+          <p className="text-[12.5px] text-[#8b8fa8] text-center mt-5">
+            New student?{" "}
+            <Link to="/register" className="text-[#00e5a0] hover:underline">Create account</Link>
           </p>
-        </div>
-
-        {/* Chain info */}
-        <div className="flex items-center justify-center gap-4 mt-6 text-[11px] font-mono text-[#3e4155]">
-          <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-[#00e5a0]" />Polygon Amoy</span>
-          <span>ERC-5192 Soulbound</span>
-          <span>Powered by IPFS</span>
-        </div>
-      </div>
+        </CardBody>
+      </Card>
     </div>
-  )
+  );
 }

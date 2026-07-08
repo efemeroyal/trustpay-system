@@ -1,296 +1,329 @@
 import React, { useRef, useEffect } from "react";
 import { gsap } from "gsap";
-import {
-  CheckCircle2,
-  Loader2,
-  Clock,
-  ArrowLeft,
-  ExternalLink,
-} from "lucide-react";
-import { usePayment } from "@/store/PaymentContext";
-import { Button } from "@/components/ui/Button";
-import { Badge } from "@/components/ui/Badge";
-import { formatXAF } from "@/utils";
-import type { FeeItem } from "@/types";
-import { cn } from "@/utils";
+import { CheckCircle2, Loader2, Clock, ArrowLeft, ExternalLink } from "lucide-react";
+import { Button, Badge } from "@/components/ui";
+import { formatXAF, polygonscanTx, cn } from "@/utils";
+import type { FeeItem, MintStep, PaymentResponse } from "@/types";
 
 interface MintingScreenProps {
   fee: FeeItem;
+  result: PaymentResponse | null;
+  steps: MintStep[];
   onBack: () => void;
 }
 
-export function MintingScreen({ fee, onBack }: MintingScreenProps) {
-  const { mintSteps, mintStatus } = usePayment();
+export function MintingScreen({ fee, result, steps, onBack }: MintingScreenProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const hexRef = useRef<SVGSVGElement>(null);
+  const hexInnerRef = useRef<SVGPathElement>(null);
+  const glowRef = useRef<HTMLDivElement>(null);
   const particlesRef = useRef<HTMLDivElement>(null);
+  const centerRef = useRef<HTMLDivElement>(null);
 
-  const isMinted = mintStatus === "minted";
-  const completedCount = mintSteps.filter((s) => s.status === "done").length;
-  const progress = (completedCount / mintSteps.length) * 100;
+  const isMinted = result?.sbt?.mintStatus === "minted";
+  const isFailed = result?.sbt?.mintStatus === "failed";
+  const completedCount = steps.filter(s => s.status === "done").length;
+  const progress = steps.length > 0 ? (completedCount / steps.length) * 100 : 0;
 
+  // ── Mount animation ────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!containerRef.current) return;
-    gsap.fromTo(
-      containerRef.current,
-      { opacity: 0, scale: 0.97 },
-      { opacity: 1, scale: 1, duration: 0.5, ease: "power3.out" },
+    gsap.fromTo(containerRef.current,
+      { opacity: 0, scale: 0.96 },
+      { opacity: 1, scale: 1, duration: 0.5, ease: "power3.out" }
     );
 
-    // Hex rotation animation
+    // Rotating hex — outer ring
     if (hexRef.current) {
       gsap.to(hexRef.current, {
         rotation: 360,
-        duration: 12,
+        duration: 14,
         repeat: -1,
         ease: "none",
         transformOrigin: "center center",
       });
     }
+
+    // Inner hex — counter-rotate slowly
+    if (hexInnerRef.current) {
+      gsap.to(hexInnerRef.current, {
+        rotation: -360,
+        duration: 22,
+        repeat: -1,
+        ease: "none",
+        transformOrigin: "center center",
+      });
+    }
+
+    // Glow pulse while processing
+    if (glowRef.current) {
+      gsap.to(glowRef.current, {
+        scale: 1.15,
+        opacity: 0.4,
+        duration: 1.8,
+        repeat: -1,
+        yoyo: true,
+        ease: "sine.inOut",
+      });
+    }
   }, []);
 
-  // Particle burst on mint
+  // ── Success burst ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!isMinted || !particlesRef.current) return;
+
+    // Flash glow
+    if (glowRef.current) {
+      gsap.killTweensOf(glowRef.current);
+      gsap.to(glowRef.current, {
+        scale: 1.6, opacity: 0.8, duration: 0.3,
+        onComplete: () => {
+          gsap.to(glowRef.current, { scale: 1.1, opacity: 0.25, duration: 0.6, ease: "power2.out" });
+        }
+      });
+    }
+
+    // Center icon flip
+    if (centerRef.current) {
+      gsap.fromTo(centerRef.current,
+        { scale: 0, rotation: -15 },
+        { scale: 1, rotation: 0, duration: 0.5, ease: "back.out(1.7)", delay: 0.1 }
+      );
+    }
+
+    // Particle burst
     const parent = particlesRef.current;
-    for (let i = 0; i < 18; i++) {
+    const colors = ["#00e5a0", "#4f9cf9", "#f5a623", "#00e5a0", "#00e5a0"];
+    for (let i = 0; i < 22; i++) {
       const p = document.createElement("div");
-      p.className = "absolute w-1.5 h-1.5 rounded-full";
-      p.style.background =
-        i % 3 === 0 ? "#00e5a0" : i % 3 === 1 ? "#4f9cf9" : "#f5a623";
-      p.style.left = "50%";
-      p.style.top = "50%";
+      p.style.cssText = `
+        position:absolute; width:${4 + Math.random() * 4}px; height:${4 + Math.random() * 4}px;
+        border-radius:50%; left:50%; top:50%;
+        background:${colors[i % colors.length]};
+      `;
       parent.appendChild(p);
-      const angle = (i / 18) * Math.PI * 2;
-      const dist = 60 + Math.random() * 50;
-      gsap.fromTo(
-        p,
+      const angle = (i / 22) * Math.PI * 2;
+      const dist = 55 + Math.random() * 65;
+      gsap.fromTo(p,
         { x: 0, y: 0, opacity: 1, scale: 1 },
         {
           x: Math.cos(angle) * dist,
           y: Math.sin(angle) * dist,
-          opacity: 0,
-          scale: 0,
-          duration: 0.8 + Math.random() * 0.4,
+          opacity: 0, scale: 0,
+          duration: 0.7 + Math.random() * 0.5,
           ease: "power2.out",
+          delay: Math.random() * 0.15,
           onComplete: () => p.remove(),
-        },
+        }
       );
     }
-    // Flash the hex
+
+    // Hex flash
     if (hexRef.current) {
       gsap.to(hexRef.current, {
-        filter: "brightness(2)",
-        duration: 0.2,
-        yoyo: true,
-        repeat: 1,
+        filter: "brightness(2.5) drop-shadow(0 0 12px #00e5a0)",
+        duration: 0.25, yoyo: true, repeat: 1,
+        onComplete: () => gsap.set(hexRef.current, { filter: "none" }),
       });
     }
   }, [isMinted]);
 
+  const hexColor = isMinted ? "#00e5a0" : isFailed ? "#ff5757" : "#4f9cf9";
+  const glowColor = isMinted
+    ? "rgba(0,229,160,0.18)"
+    : isFailed
+    ? "rgba(255,87,87,0.12)"
+    : "rgba(79,156,249,0.12)";
+
   return (
     <div ref={containerRef} className="flex flex-col items-center gap-6 py-4">
-      {/* Back button */}
       {isMinted && (
         <div className="w-full">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onBack}
-            icon={<ArrowLeft className="w-3.5 h-3.5" />}
-          >
+          <Button variant="ghost" size="sm" onClick={onBack} icon={<ArrowLeft className="w-3.5 h-3.5" />}>
             Back to Payments
           </Button>
         </div>
       )}
 
-      <div className="w-full max-w-[520px]">
-        {/* Hero visual */}
-        <div className="relative flex items-center justify-center h-[200px] mb-4">
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div
-              className={cn(
-                "w-[140px] h-[140px] rounded-full transition-all duration-700",
-                isMinted
-                  ? "bg-[rgba(0,229,160,0.15)]"
-                  : "bg-[rgba(79,156,249,0.08)]",
-              )}
-              style={{
-                boxShadow: isMinted
-                  ? "0 0 60px rgba(0,229,160,0.2)"
-                  : "0 0 40px rgba(79,156,249,0.1)",
-              }}
-            />
-          </div>
-
-          {/* Particle container */}
+      <div className="w-full max-w-[500px]">
+        {/* ── Hero visual ── */}
+        <div className="relative flex items-center justify-center h-[220px] mb-6">
+          {/* Outer glow */}
           <div
-            ref={particlesRef}
-            className="absolute inset-0 flex items-center justify-center pointer-events-none"
+            ref={glowRef}
+            className="absolute w-[160px] h-[160px] rounded-full"
+            style={{ background: `radial-gradient(circle, ${glowColor} 0%, transparent 70%)` }}
           />
 
-          {/* Rotating hex */}
-          <svg
-            ref={hexRef}
-            width="120"
-            height="120"
-            viewBox="0 0 120 120"
-            fill="none"
-            className="absolute"
-          >
+          {/* Particles */}
+          <div ref={particlesRef} className="absolute inset-0 flex items-center justify-center pointer-events-none" />
+
+          {/* Rotating hex SVG */}
+          <svg ref={hexRef} width="150" height="150" viewBox="0 0 150 150" fill="none" className="absolute">
+            {/* Outer hex — dashed */}
             <path
-              d="M60 8L108 34V86L60 112L12 86V34L60 8Z"
-              stroke={isMinted ? "#00e5a0" : "#4f9cf9"}
+              d="M75 8L138 43V113L75 148L12 113V43L75 8Z"
+              stroke={hexColor}
               strokeWidth="1"
-              strokeDasharray="6 4"
+              strokeDasharray="8 5"
               fill="none"
-              opacity={isMinted ? 0.6 : 0.3}
+              opacity="0.5"
+            />
+            {/* Mid hex — solid thin */}
+            <path
+              d="M75 22L124 49.5V104.5L75 132L26 104.5V49.5L75 22Z"
+              stroke={hexColor}
+              strokeWidth="0.5"
+              fill="none"
+              opacity="0.25"
+            />
+          </svg>
+
+          {/* Inner counter-rotating hex */}
+          <svg width="150" height="150" viewBox="0 0 150 150" fill="none" className="absolute">
+            <path
+              ref={hexInnerRef}
+              d="M75 36L108 55V93L75 112L42 93V55L75 36Z"
+              stroke={hexColor}
+              strokeWidth="1"
+              strokeDasharray="4 6"
+              fill="none"
+              opacity="0.3"
             />
           </svg>
 
           {/* Center icon */}
           <div
+            ref={centerRef}
             className={cn(
-              "w-16 h-16 rounded-2xl flex items-center justify-center transition-all duration-500 z-10",
+              "w-[72px] h-[72px] rounded-[20px] flex items-center justify-center z-10 transition-colors duration-500",
               isMinted
                 ? "bg-[#00e5a0]"
-                : "bg-[#161921] border border-[rgba(79,156,249,0.3)]",
+                : isFailed
+                ? "bg-[rgba(255,87,87,0.15)] border border-[rgba(255,87,87,0.3)]"
+                : "bg-[#0f1420] border border-[rgba(79,156,249,0.3)]"
             )}
           >
             {isMinted ? (
-              <CheckCircle2 className="w-8 h-8 text-[#050708]" />
+              <CheckCircle2 className="w-9 h-9 text-[#050708]" />
+            ) : isFailed ? (
+              <span className="text-[#ff5757] text-[28px]">✕</span>
             ) : (
-              <Loader2 className="w-7 h-7 text-[#4f9cf9] animate-spin" />
+              <Loader2 className="w-8 h-8 text-[#4f9cf9] animate-spin" />
             )}
           </div>
         </div>
 
-        {/* Status text */}
+        {/* ── Status text ── */}
         <div className="text-center mb-6">
-          <h2 className="text-lg font-semibold mb-1">
-            {isMinted ? "Receipt Minted On-Chain 🎉" : "Minting Your Receipt…"}
-          </h2>
-          <p className="text-sm text-[#8b8fa8]">
+          <h2 className="text-[18px] font-semibold mb-1.5">
             {isMinted
-              ? "Your SBT receipt is permanently recorded on Polygon. It cannot be transferred or forged."
-              : "This usually takes 5–15 seconds. Do not close this page."}
+              ? "Payment Confirmed! 🎉"
+              : isFailed
+              ? "Receipt saved — verification pending"
+              : "Processing your payment…"}
+          </h2>
+          <p className="text-[13px] text-[#8b8fa8] leading-relaxed max-w-[360px] mx-auto">
+            {isMinted
+              ? "Your receipt is permanently secured and tamper-proof. It can never be modified or shared."
+              : isFailed
+              ? "Your payment was recorded successfully. Receipt verification will complete shortly."
+              : "This usually takes a few seconds. Please keep this page open."}
           </p>
         </div>
 
-        {/* Progress bar */}
+        {/* ── Progress bar ── */}
         <div className="mb-5">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[11px] font-mono text-[#8b8fa8] uppercase tracking-wide">
-              Progress
-            </span>
-            <span className="text-[11px] font-mono text-[#8b8fa8]">
-              {completedCount}/{mintSteps.length} steps
-            </span>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-mono text-[#8b8fa8] uppercase tracking-wide">Progress</span>
+            <span className="text-[11px] font-mono text-[#8b8fa8]">{completedCount}/{steps.length} steps</span>
           </div>
-          <div className="h-1 bg-[#161921] rounded-full overflow-hidden">
+          <div className="h-1 bg-[#141926] rounded-full overflow-hidden">
             <div
-              className="h-full rounded-full transition-all duration-700"
+              className="h-full rounded-full transition-all duration-700 ease-out"
               style={{
                 width: `${progress}%`,
-                background: isMinted
-                  ? "#00e5a0"
-                  : "linear-gradient(90deg, #4f9cf9, #00e5a0)",
+                background: isMinted ? "#00e5a0" : "linear-gradient(90deg, #4f9cf9, #00e5a0)",
               }}
             />
           </div>
         </div>
 
-        {/* Fee summary */}
-        <div className="bg-[#161921] rounded-xl p-4 mb-5">
+        {/* ── Fee summary ── */}
+        <div className="bg-[#0f1420] rounded-xl p-4 mb-5 border border-[rgba(255,255,255,0.06)]">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-[10.5px] font-mono uppercase tracking-wide text-[#8b8fa8] mb-0.5">
-                Fee
-              </p>
-              <p className="text-[13.5px] font-semibold">{fee.label}</p>
+              <p className="text-[10.5px] font-mono uppercase tracking-wide text-[#8b8fa8] mb-0.5">Paying for</p>
+              <p className="text-[14px] font-semibold">{fee.label}</p>
             </div>
             <div className="text-right">
-              <p className="text-[10.5px] font-mono uppercase tracking-wide text-[#8b8fa8] mb-0.5">
-                Amount
-              </p>
-              <p className="font-mono font-bold text-[16px] text-[#00e5a0]">
-                {formatXAF(fee.amount)} CFA
-              </p>
+              <p className="text-[10.5px] font-mono uppercase tracking-wide text-[#8b8fa8] mb-0.5">Amount</p>
+              <p className="font-mono font-bold text-[17px] text-[#00e5a0]">{formatXAF(fee.amount)} CFA</p>
             </div>
           </div>
+          {result && (
+            <div className="mt-3 pt-3 border-t border-[rgba(255,255,255,0.06)] flex items-center justify-between">
+              <span className="text-[11px] text-[#8b8fa8]">Reference</span>
+              <span className="text-[11.5px] font-mono text-[#e8eaf0]">{result.referenceNumber}</span>
+            </div>
+          )}
         </div>
 
-        {/* Steps */}
-        <div className="flex flex-col">
-          {mintSteps.map((step, i) => (
-            <MintStepRow
-              key={step.id}
-              step={step}
-              isLast={i === mintSteps.length - 1}
-            />
+        {/* ── Steps ── */}
+        <div className="flex flex-col mb-6">
+          {steps.map((step, i) => (
+            <StepRow key={step.id} step={step} isLast={i === steps.length - 1} />
           ))}
         </div>
 
-        {/* Done actions */}
-        {isMinted && (
-          <div className="flex gap-3 mt-6">
-            <Button
-              variant="outline"
-              size="md"
-              icon={<ExternalLink className="w-3.5 h-3.5" />}
-              className="flex-1 justify-center"
-            >
-              View on Polygonscan
-            </Button>
-            <Button
-              size="md"
-              className="flex-1 justify-center"
-              onClick={onBack}
-            >
-              Back to Dashboard
+        {/* ── Actions on success ── */}
+        {isMinted && result && (
+          <div className="flex gap-3">
+            {result.sbt?.transactionHash && (
+              <a
+                href={polygonscanTx(result.sbt.transactionHash)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1"
+              >
+                <Button variant="outline" size="md" icon={<ExternalLink className="w-3.5 h-3.5" />} className="w-full justify-center">
+                  Verify Receipt
+                </Button>
+              </a>
+            )}
+            <Button size="md" className="flex-1 justify-center" onClick={onBack}>
+              Done
             </Button>
           </div>
+        )}
+
+        {isFailed && (
+          <Button size="md" className="w-full justify-center" onClick={onBack}>
+            Back to Payments
+          </Button>
         )}
       </div>
     </div>
   );
 }
 
-function MintStepRow({
-  step,
-  isLast,
-}: {
-  step: {
-    id: string;
-    label: string;
-    description: string;
-    status: string;
-    detail?: string;
-  };
-  isLast: boolean;
-}) {
+// ─── Step row ─────────────────────────────────────────────────────────────────
+function StepRow({ step, isLast }: { step: MintStep; isLast: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (step.status === "active" && ref.current) {
-      gsap.fromTo(
-        ref.current,
+      gsap.fromTo(ref.current,
         { backgroundColor: "rgba(79,156,249,0.0)" },
-        {
-          backgroundColor: "rgba(79,156,249,0.05)",
-          duration: 0.3,
-          yoyo: true,
-          repeat: 1,
-        },
+        { backgroundColor: "rgba(79,156,249,0.04)", duration: 0.3, yoyo: true, repeat: 1 }
       );
     }
   }, [step.status]);
 
   const iconMap = {
-    done: <CheckCircle2 className="w-4 h-4 text-[#00e5a0]" />,
-    active: <Loader2 className="w-4 h-4 text-[#f5a623] animate-spin" />,
-    queued: <Clock className="w-4 h-4 text-[#3e4155]" />,
-    error: <CheckCircle2 className="w-4 h-4 text-[#ff5757]" />,
+    done: <CheckCircle2 className="w-3.5 h-3.5 text-[#00e5a0]" />,
+    active: <Loader2 className="w-3.5 h-3.5 text-[#f5a623] animate-spin" />,
+    queued: <span className="w-1.5 h-1.5 rounded-full bg-[#3e4155]" />,
+    error: <span className="text-[#ff5757] text-[13px]">✕</span>,
   };
 
   const bgMap = {
@@ -300,36 +333,47 @@ function MintStepRow({
     error: "bg-[rgba(255,87,87,0.10)]",
   };
 
+  // Plain language labels — no blockchain jargon
+  const friendlyLabel: Record<string, string> = {
+    payment: "Payment received",
+    verify: "Amount confirmed",
+    ipfs: "Receipt saved securely",
+    mint: "Receipt being issued",
+    notify: "Receipt delivered",
+  };
+
+  const friendlyDetail: Record<string, string> = {
+    payment: "Mobile Money payment confirmed",
+    verify: "Payment amount verified",
+    ipfs: "Receipt details stored permanently",
+    mint: "Securing your receipt",
+    notify: "All done",
+  };
+
+  const label = friendlyLabel[step.id] ?? step.label;
+  const detail = step.detail ?? (step.status === "queued" ? "Waiting…" : friendlyDetail[step.id] ?? step.description);
+
   return (
-    <div
-      ref={ref}
-      className="flex gap-3 rounded-xl p-2 -mx-2 transition-colors duration-300"
-    >
+    <div ref={ref} className="flex gap-3 rounded-xl p-2 -mx-2 transition-colors duration-200">
       <div className="flex flex-col items-center">
-        <div
-          className={cn(
-            "w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-colors duration-300",
-            bgMap[step.status as keyof typeof bgMap],
-          )}
-        >
-          {iconMap[step.status as keyof typeof iconMap]}
+        <div className={cn(
+          "w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 transition-colors duration-300",
+          bgMap[step.status]
+        )}>
+          {iconMap[step.status]}
         </div>
-        {!isLast && (
-          <div className="w-px flex-1 bg-[rgba(255,255,255,0.06)] my-1" />
-        )}
+        {!isLast && <div className="w-px flex-1 bg-[rgba(255,255,255,0.06)] my-1" style={{ minHeight: "16px" }} />}
       </div>
-      <div className="pb-4 min-w-0">
-        <p
-          className={cn(
-            "text-[13px] font-medium leading-none mt-1.5",
-            step.status === "queued" ? "text-[#3e4155]" : "text-[#e8eaf0]",
-          )}
-        >
-          {step.label}
+      <div className="pb-3 min-w-0 pt-0.5">
+        <p className={cn(
+          "text-[12.5px] font-medium leading-snug",
+          step.status === "queued" ? "text-[#3e4155]" : "text-[#e8eaf0]"
+        )}>
+          {label}
         </p>
-        <p className="text-[11.5px] font-mono mt-1 text-[#8b8fa8]">
-          {step.detail || step.description}
-        </p>
+        {step.status !== "queued" && (
+          <p className="text-[11px] font-mono text-[#8b8fa8] mt-0.5 truncate">{detail}</p>
+        )}
       </div>
     </div>
   );

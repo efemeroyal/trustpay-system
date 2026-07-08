@@ -1,83 +1,66 @@
 import axios from "axios";
-import type { MoMoProvider, FeeCategory } from "@/types";
-
-const BASE = import.meta.env.VITE_API_URL || "http://localhost:3001/api";
+import type {
+  PaymentPayload,
+  ApiResponse,
+  Payment,
+  Receipt,
+  PaymentResponse,
+  OnChainReceipt,
+  InstallmentStatus,
+  User,
+} from "@/types";
 
 const api = axios.create({
-  baseURL: BASE,
-  timeout: 30000,
+  baseURL: import.meta.env.VITE_API_URL ?? "http://localhost:5000/api",
+  timeout: 30_000,
   headers: { "Content-Type": "application/json" },
 });
 
-api.interceptors.request.use((cfg) => {
-  const token = localStorage.getItem("tp_token");
-  if (token) cfg.headers.Authorization = `Bearer ${token}`;
-  return cfg;
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem("trustpay_token");
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
 });
 
-// ─── Auth ──────────────────────────────────────────────────────────────────────
+api.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    if (err.response?.status === 401) {
+      localStorage.removeItem("trustpay_token");
+      localStorage.removeItem("trustpay_user");
+      window.location.href = "/login";
+    }
+    return Promise.reject(err);
+  }
+);
 
-export async function loginStudent(studentId: string, password: string) {
-  const { data } = await api.post("/auth/login", { studentId, password });
-  return data;
-}
+export const authApi = {
+  login: (email: string, password: string) =>
+    api.post<ApiResponse<User & { token: string }>>("/auth/login", { email, password }),
+  register: (payload: {
+    fullName: string; email: string; password: string;
+    studentId: string; programme: string; level: string;
+  }) => api.post<ApiResponse<User & { token: string }>>("/auth/register/student", payload),
+  getProfile: () => api.get<ApiResponse<User>>("/auth/profile"),
+};
 
-export async function linkWallet(walletAddress: string) {
-  const { data } = await api.post("/auth/link-wallet", { walletAddress });
-  return data;
-}
+export const paymentApi = {
+  initiate: (payload: PaymentPayload) =>
+    api.post<ApiResponse<PaymentResponse>>("/payments/initiate", payload),
+  getMyPayments: () => api.get<ApiResponse<Payment[]>>("/payments/my-payments"),
+};
 
-// ─── Payment ──────────────────────────────────────────────────────────────────
+export const receiptApi = {
+  getMyReceipts: () => api.get<ApiResponse<Receipt[]>>("/receipts/my-receipts"),
+  getOnChainReceipt: (tokenId: string) =>
+    api.get<ApiResponse<OnChainReceipt>>(`/receipts/on-chain/${tokenId}`),
+};
 
-export async function initiatePayment(params: {
-  studentId: string;
-  feeCategory: FeeCategory;
-  amount: number;
-  phoneNumber: string;
-  provider: MoMoProvider;
-}) {
-  const { data } = await api.post("/payment/initiate", params);
-  return data as { referenceId: string; status: string };
-}
-
-export async function checkPaymentStatus(referenceId: string) {
-  const { data } = await api.get(`/payment/status/${referenceId}`);
-  return data as {
-    status: "pending" | "confirmed" | "failed";
-    momoRef: string;
-  };
-}
-
-// ─── Minting ──────────────────────────────────────────────────────────────────
-
-export async function mintReceipt(params: {
-  studentId: string;
-  feeCategory: FeeCategory;
-  amount: number;
-  walletAddress: string;
-  momoRef: string;
-}) {
-  const { data } = await api.post("/mint", params);
-  return data as { txHash: string; tokenId: number; ipfsCid: string };
-}
-
-// ─── Receipts ─────────────────────────────────────────────────────────────────
-
-export async function getStudentReceipts(studentId: string) {
-  const { data } = await api.get(`/receipts/${studentId}`);
-  return data;
-}
-
-// ─── Admin ────────────────────────────────────────────────────────────────────
-
-export async function verifyByWallet(walletAddress: string) {
-  const { data } = await api.get(`/admin/verify/wallet/${walletAddress}`);
-  return data;
-}
-
-export async function verifyByStudentId(studentId: string) {
-  const { data } = await api.get(`/admin/verify/student/${studentId}`);
-  return data;
-}
+export const historyApi = {
+  getInstallmentStatus: (academicYear?: string) =>
+    api.get<ApiResponse<InstallmentStatus[]>>("/history/installments", {
+      params: academicYear ? { academicYear } : {},
+    }),
+};
 
 export default api;

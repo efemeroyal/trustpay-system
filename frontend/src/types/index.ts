@@ -1,111 +1,164 @@
-// ─── Core Domain Types ────────────────────────────────────────────────────────
-
-export type FeeCategory =
-  | 'tuition_sem1'
-  | 'tuition_sem2'
-  | 'registration'
-  | 'library'
-  | 'medical'
-  | 'sport'
-  | 'exam';
-
-export type PaymentStatus = 'idle' | 'initiating' | 'pending' | 'confirmed' | 'failed';
-export type MintStatus = 'idle' | 'uploading_ipfs' | 'minting' | 'confirming' | 'minted' | 'failed';
-export type TxStatus = 'success' | 'pending' | 'failed';
-export type MoMoProvider = 'mtn' | 'orange';
-
-// ─── Wallet / Auth ─────────────────────────────────────────────────────────────
-
-export interface Student {
-  id: string;          // e.g. "UB22CS041"
-  name: string;
-  faculty: string;
-  level: string;
-  university: string;
-  walletAddress: `0x${string}` | null;
-  avatarInitials: string;
+// ─── User & Auth ──────────────────────────────────────────────────────────────
+export interface User {
+  _id: string;
+  fullName: string;
+  email: string;
+  role: "student" | "admin";
+  studentId?: string;
+  programme?: string;
+  level?: string;
+  walletAddress?: string;
 }
 
-// ─── Fee ───────────────────────────────────────────────────────────────────────
+// ─── Payment ──────────────────────────────────────────────────────────────────
+export type PaymentStatus = "pending" | "success" | "failed";
+export type PaymentType =
+  | "tuition"
+  | "registration"
+  | "hostel"
+  | "library"
+  | "other";
+export type MoMoProvider = "MTN" | "Orange";
+
+export interface Payment {
+  _id: string;
+  studentId: string;
+  amount: number;
+  paymentType: PaymentType;
+  academicYear: string;
+  level: string;
+  momoProvider: MoMoProvider;
+  momoNumber: string;
+  status: PaymentStatus;
+  transactionReference: string;
+  failureReason?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PaymentPayload {
+  amount: number;
+  paymentType: PaymentType;
+  academicYear: string;
+  level: string;
+  momoProvider: MoMoProvider;
+  momoNumber: string;
+}
+
+export interface PaymentResponse {
+  referenceNumber: string;
+  amount: number;
+  paymentType: PaymentType;
+  academicYear: string;
+  qrCode: string;
+  createdAt: string;
+  sbt: {
+    tokenId?: string;
+    transactionHash?: string;
+    mintStatus: "pending" | "minted" | "failed";
+  } | null;
+}
+
+// ─── Receipt ──────────────────────────────────────────────────────────────────
+export interface Receipt {
+  _id: string;
+  payment: string | Payment;
+  studentId: string;
+  receiptId: string;
+  referenceNumber: string;
+  qrCodeData: string;
+  ipfsCID?: string;
+  amount: number;
+  paymentType: PaymentType;
+  academicYear: string;
+  level: string;
+  isVerified: boolean;
+  verifiedAt?: string;
+  createdAt: string;
+  sbt?: {
+    tokenId?: string;
+    transactionHash?: string;
+    mintStatus: "pending" | "minted" | "failed";
+  };
+}
+
+// ─── On-chain receipt ─────────────────────────────────────────────────────────
+export interface OnChainReceipt {
+  tokenId: string;
+  transactionHash: string;
+  contractAddress: string;
+  polygonscanUrl: string;
+  metadata: {
+    receiptId: string;
+    referenceNumber: string;
+    studentId: string;
+    amount: number;
+    paymentType: string;
+    academicYear: string;
+    level: string;
+    issuedAt: string;
+    issuer: string;
+    network: string;
+  };
+}
+
+// ─── Installment ──────────────────────────────────────────────────────────────
+export interface InstallmentStatus {
+  paymentType: PaymentType;
+  requiredAmount: number;
+  totalPaid: number;
+  remaining: number;
+  progress: number;
+  cleared: boolean;
+  academicYear: string;
+  level: string;
+}
+
+// ─── Fee catalog ──────────────────────────────────────────────────────────────
+export type FeeCategory =
+  | "tuition_sem1"
+  | "tuition_sem2"
+  | "registration"
+  | "library"
+  | "medical"
+  | "sport"
+  | "exam";
 
 export interface FeeItem {
   id: FeeCategory;
   label: string;
-  amount: number;       // in XAF
+  amount: number;
   description: string;
-  semester?: 1 | 2;
+  semester?: number;
   mandatory: boolean;
+  paymentType: PaymentType;
 }
 
-// ─── Transaction ───────────────────────────────────────────────────────────────
-
-export interface Transaction {
-  id: string;
-  feeLabel: string;
-  feeCategory: FeeCategory;
-  amount: number;
-  status: TxStatus;
-  txHash?: `0x${string}`;
-  sbtTokenId?: number;
-  blockNumber?: bigint;
-  timestamp: Date;
-  ipfsCid?: string;
-  momoRef?: string;
-}
-
-// ─── SBT Receipt ───────────────────────────────────────────────────────────────
-
-export interface SBTReceipt {
-  tokenId: number;
-  studentId: string;
-  studentName: string;
-  university: string;
-  feeLabel: string;
-  feeCategory: FeeCategory;
-  amount: number;
-  txHash: `0x${string}`;
-  blockNumber: bigint;
-  mintedAt: Date;
-  ipfsCid: string;
-  contractAddress: `0x${string}`;
-}
-
-// ─── Minting Step ──────────────────────────────────────────────────────────────
+// ─── Mint steps (UI only) ─────────────────────────────────────────────────────
+export type MintStepStatus = "queued" | "active" | "done" | "error";
 
 export interface MintStep {
   id: string;
   label: string;
   description: string;
-  status: 'done' | 'active' | 'queued' | 'error';
+  status: MintStepStatus;
   detail?: string;
 }
 
-// ─── Notification ─────────────────────────────────────────────────────────────
-
+// ─── Notifications ────────────────────────────────────────────────────────────
 export interface AppNotification {
   id: string;
-  type: 'success' | 'error' | 'info' | 'warning';
+  type: "success" | "error" | "info" | "warning";
   title: string;
   message: string;
   timestamp: Date;
   read: boolean;
 }
 
-// ─── Chain Activity ────────────────────────────────────────────────────────────
-
-export interface ChainEvent {
-  type: 'MINT' | 'VERIFY' | 'FAIL';
-  hash: `0x${string}`;
-  blockNumber: number;
-  timestamp: Date;
-}
-
-// ─── Dashboard Stats ───────────────────────────────────────────────────────────
-
-export interface DashboardStats {
-  totalPaid: number;
-  sbtCount: number;
-  pendingCount: number;
-  gasCost: number;
-  weeklyData: number[];
+// ─── API wrapper ──────────────────────────────────────────────────────────────
+export interface ApiResponse<T> {
+  success: boolean;
+  data: T;
+  count?: number;
+  message?: string;
 }

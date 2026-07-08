@@ -5,131 +5,193 @@ import {
   CheckCircle2,
   ChevronRight,
   Smartphone,
-  Zap,
   MoveLeft,
+  Zap,
 } from "lucide-react";
-import { Card, CardHeader, CardTitle, CardBody } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { Badge } from "@/components/ui/Badge";
-import { Input } from "@/components/ui/Input";
-import { MintingScreen } from "@/modules/minting/MintingScreen";
+import { useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/store/AuthContext";
-import { usePayment } from "@/store/PaymentContext";
 import { useNotifications } from "@/store/NotificationContext";
-import { FEE_CATALOG, formatXAF } from "@/utils";
-import type { FeeItem, MoMoProvider } from "@/types";
-import { cn } from "@/utils";
+import { paymentApi } from "@/services/api";
+import { MintingScreen } from "../minting/MintingScreen";
+import {
+  Button,
+  Input,
+  Card,
+  CardHeader,
+  CardTitle,
+  CardBody,
+  Badge,
+} from "@/components/ui";
+import { FEE_CATALOG, formatXAF, currentAcademicYear, cn } from "@/utils";
+import type { FeeItem, MoMoProvider, PaymentResponse, MintStep } from "@/types";
+
+const DEFAULT_STEPS: MintStep[] = [
+  {
+    id: "payment",
+    label: "Payment received",
+    description: "Waiting for confirmation",
+    status: "queued",
+  },
+  {
+    id: "verify",
+    label: "Amount confirmed",
+    description: "Verifying payment amount",
+    status: "queued",
+  },
+  {
+    id: "ipfs",
+    label: "Receipt saved securely",
+    description: "Storing receipt details",
+    status: "queued",
+  },
+  {
+    id: "mint",
+    label: "Receipt being issued",
+    description: "Securing your receipt",
+    status: "queued",
+  },
+  {
+    id: "notify",
+    label: "Receipt delivered",
+    description: "All done",
+    status: "queued",
+  },
+];
+
+type Step = "select" | "confirm" | "processing";
 
 export function PaymentPage() {
-  const { student } = useAuth();
-  const {
-    addTransaction,
-    updateTransaction,
-    setPaymentStatus,
-    setMintStatus,
-    updateMintStep,
-    resetMintSteps,
-  } = usePayment();
+  const { user } = useAuth();
   const { add: addNotif } = useNotifications();
-
-  const [selectedFee, setSelectedFee] = useState<FeeItem | null>(null);
-  const [provider, setProvider] = useState<MoMoProvider>("mtn");
-  const [phone, setPhone] = useState("");
-  const [step, setStep] = useState<"select" | "confirm" | "minting">("select");
-  const [isLoading, setIsLoading] = useState(false);
-  const [txId, setTxId] = useState<string | null>(null);
-
   const cardsRef = useRef<HTMLDivElement>(null);
+  const confirmRef = useRef<HTMLDivElement>(null);
 
+  const [step, setStep] = useState<Step>("select");
+  const [selectedFee, setSelectedFee] = useState<FeeItem | null>(null);
+  const [provider, setProvider] = useState<MoMoProvider>("MTN");
+  const [phone, setPhone] = useState("");
+  const [phoneError, setPhoneError] = useState("");
+  const [result, setResult] = useState<PaymentResponse | null>(null);
+  const [mintSteps, setMintSteps] = useState<MintStep[]>(DEFAULT_STEPS);
+
+  // ── Card entrance animation ────────────────────────────────────────────────
   useEffect(() => {
-    if (!cardsRef.current) return;
+    if (step !== "select" || !cardsRef.current) return;
     const cards = cardsRef.current.querySelectorAll(".fee-card");
     gsap.fromTo(
       cards,
       { y: 16, opacity: 0 },
       { y: 0, opacity: 1, stagger: 0.07, duration: 0.4, ease: "power2.out" },
     );
-  }, []);
+  }, [step]);
 
-  const handleSelectFee = (fee: FeeItem) => {
-    setSelectedFee(fee);
-    gsap.to(".fee-card", { scale: 0.98, duration: 0.1 });
-    gsap.to(".fee-card", { scale: 1, duration: 0.2, delay: 0.1 });
-    setStep("confirm");
+  // ── Confirm pane entrance ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (step !== "confirm" || !confirmRef.current) return;
+    gsap.fromTo(
+      confirmRef.current,
+      { x: 16, opacity: 0 },
+      { x: 0, opacity: 1, duration: 0.35, ease: "power2.out" },
+    );
+  }, [step]);
+
+  // ── Simulate mint progress steps (replace with real WebSocket later) ───────
+  const simulateMintSteps = () => {
+    const delays = [600, 1800, 3200, 5000, 6800];
+    DEFAULT_STEPS.forEach((s, i) => {
+      setTimeout(() => {
+        setMintSteps((prev) =>
+          prev.map((ms, j) => {
+            if (j === i) return { ...ms, status: "active" };
+            if (j < i) return { ...ms, status: "done" };
+            return ms;
+          }),
+        );
+        if (i === DEFAULT_STEPS.length - 1) {
+          setTimeout(() => {
+            setMintSteps((prev) =>
+              prev.map((ms) => ({ ...ms, status: "done" })),
+            );
+          }, 900);
+        }
+      }, delays[i]);
+    });
   };
 
-  const handlePay = async () => {
-    if (!selectedFee || !student) return;
-    setIsLoading(true);
-    const id = addTransaction({
-      feeLabel: selectedFee.label,
-      feeCategory: selectedFee.id,
-      amount: selectedFee.amount,
-      status: "pending",
-    });
-    setTxId(id);
-    setPaymentStatus("initiating");
-    setIsLoading(false);
-    setStep("minting");
+  // ── Payment mutation ───────────────────────────────────────────────────────
+  const { mutate: initiatePayment, isPending } = useMutation({
+    mutationFn: () => {
+      if (!selectedFee || !user) throw new Error("Missing data");
+      return paymentApi
+        .initiate({
+          amount: selectedFee.amount,
+          paymentType: selectedFee.paymentType,
+          academicYear: currentAcademicYear(),
+          level: user.level ?? "Year 1",
+          momoProvider: provider,
+          momoNumber: phone,
+        })
+        .then((r) => r.data.data);
+    },
+    onSuccess: (data) => {
+      setResult(data);
+      setStep("processing");
+      setMintSteps(DEFAULT_STEPS.map((s) => ({ ...s, status: "queued" })));
+      simulateMintSteps();
+      if (data.sbt?.mintStatus === "minted") {
+        addNotif({
+          type: "success",
+          title: "Payment confirmed!",
+          message: `Your ${selectedFee?.label} receipt is ready.`,
+        });
+      }
+    },
+    onError: (err: unknown) => {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message ?? "Payment could not be processed. Please try again.";
+      addNotif({ type: "error", title: "Payment failed", message: msg });
+    },
+  });
 
-    // Simulate minting flow
-    resetMintSteps();
-    setMintStatus("idle");
-
-    const steps = [
-      {
-        id: "payment",
-        delay: 800,
-        detail: `MTN webhook received · ${new Date().toLocaleTimeString()}`,
-      },
-      {
-        id: "verify",
-        delay: 2000,
-        detail: "Checksum passed · Node.js middleware",
-      },
-      { id: "ipfs", delay: 3500, detail: "CID: bafybeig…3xk9q" },
-      { id: "mint", delay: 5500, detail: "Block confirmed on Polygon Amoy" },
-      { id: "notify", delay: 7200, detail: "WebSocket push delivered" },
-    ];
-
-    for (let i = 0; i < steps.length; i++) {
-      const { id, delay, detail } = steps[i];
-      setTimeout(() => {
-        if (i > 0)
-          updateMintStep(steps[i - 1].id, {
-            status: "done",
-            detail: steps[i - 1].detail,
-          });
-        updateMintStep(id, { status: "active", description: "In progress…" });
-        if (i === steps.length - 1) {
-          setTimeout(() => {
-            updateMintStep(id, { status: "done", detail });
-            updateTransaction(id, {
-              status: "success",
-              txHash:
-                `0x${Math.random().toString(16).slice(2, 42)}` as `0x${string}`,
-              sbtTokenId: Math.floor(Math.random() * 1000),
-            });
-            setMintStatus("minted");
-            addNotif({
-              type: "success",
-              title: "Receipt Minted!",
-              message: `SBT for ${selectedFee.label} is now on-chain.`,
-            });
-          }, 800);
-        }
-      }, delay);
+  const validatePhone = (val: string) => {
+    setPhone(val);
+    if (val.length > 0 && !/^[0-9]{9}$/.test(val.replace(/\s/g, ""))) {
+      setPhoneError("Enter a valid 9-digit phone number");
+    } else {
+      setPhoneError("");
     }
   };
 
-  if (step === "minting") {
+  const handlePay = () => {
+    if (!phone.trim()) {
+      setPhoneError("Phone number is required");
+      return;
+    }
+    if (!/^[0-9]{9}$/.test(phone.replace(/\s/g, ""))) {
+      setPhoneError("Enter a valid 9-digit phone number");
+      return;
+    }
+    initiatePayment();
+  };
+
+  const handleBack = () => {
+    setStep("select");
+    setSelectedFee(null);
+    setPhone("");
+    setPhoneError("");
+    setResult(null);
+    setMintSteps(DEFAULT_STEPS.map((s) => ({ ...s, status: "queued" })));
+  };
+
+  // ── Processing screen ──────────────────────────────────────────────────────
+  if (step === "processing" && selectedFee) {
     return (
       <MintingScreen
-        fee={selectedFee!}
-        onBack={() => {
-          setStep("select");
-          setSelectedFee(null);
-        }}
+        fee={selectedFee}
+        result={result}
+        steps={mintSteps}
+        onBack={handleBack}
       />
     );
   }
@@ -139,10 +201,13 @@ export function PaymentPage() {
       <div>
         <h1 className="text-xl font-semibold tracking-tight">Pay Fees</h1>
         <p className="text-sm text-[#8b8fa8] mt-0.5">
-          Select a fee category and pay via MTN MoMo
+          {step === "select"
+            ? "Choose a fee category to pay"
+            : "Confirm your payment details"}
         </p>
       </div>
 
+      {/* ── Fee selection ── */}
       {step === "select" && (
         <div
           ref={cardsRef}
@@ -151,19 +216,23 @@ export function PaymentPage() {
           {FEE_CATALOG.map((fee) => (
             <button
               key={fee.id}
-              onClick={() => handleSelectFee(fee)}
+              onClick={() => {
+                setSelectedFee(fee);
+                setStep("confirm");
+              }}
               className={cn(
-                "fee-card text-left bg-[#0f1117] border border-[rgba(255,255,255,0.07)] rounded-xl p-4",
-                "hover:border-[rgba(0,229,160,0.3)] hover:shadow-[0_0_20px_rgba(0,229,160,0.06)] transition-all duration-200 group",
+                "fee-card text-left bg-[#0b0f17] border border-[rgba(255,255,255,0.07)] rounded-2xl p-4",
+                "hover:border-[rgba(0,229,160,0.3)] hover:shadow-[0_0_24px_rgba(0,229,160,0.05)]",
+                "transition-all duration-200 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5a0]",
               )}
             >
               <div className="flex items-start justify-between mb-3">
                 <div
                   className={cn(
-                    "w-9 h-9 rounded-lg flex items-center justify-center",
+                    "w-9 h-9 rounded-xl flex items-center justify-center",
                     fee.mandatory
-                      ? "bg-[rgba(0,229,160,0.10)]"
-                      : "bg-[rgba(79,156,249,0.10)]",
+                      ? "bg-[rgba(0,229,160,0.1)]"
+                      : "bg-[rgba(79,156,249,0.1)]",
                   )}
                 >
                   <Zap
@@ -174,15 +243,15 @@ export function PaymentPage() {
                   />
                 </div>
                 <Badge variant={fee.mandatory ? "success" : "info"}>
-                  {fee.mandatory ? "Mandatory" : "Optional"}
+                  {fee.mandatory ? "Required" : "Optional"}
                 </Badge>
               </div>
               <h3 className="text-[13.5px] font-semibold mb-1">{fee.label}</h3>
-              <p className="text-[11.5px] text-[#8b8fa8] mb-3">
+              <p className="text-[11.5px] text-[#8b8fa8] mb-4 leading-relaxed">
                 {fee.description}
               </p>
               <div className="flex items-center justify-between">
-                <span className="font-mono font-bold text-[15px] text-[#00e5a0]">
+                <span className="font-mono font-bold text-[16px] text-[#00e5a0]">
                   {formatXAF(fee.amount)} CFA
                 </span>
                 <ChevronRight className="w-4 h-4 text-[#3e4155] group-hover:text-[#00e5a0] group-hover:translate-x-0.5 transition-all" />
@@ -192,8 +261,9 @@ export function PaymentPage() {
         </div>
       )}
 
+      {/* ── Confirmation ── */}
       {step === "confirm" && selectedFee && (
-        <div className="max-w-[520px]">
+        <div ref={confirmRef} className="max-w-[520px]">
           <Card>
             <CardHeader>
               <CardTitle icon={<Phone className="w-4 h-4" />}>
@@ -201,16 +271,16 @@ export function PaymentPage() {
               </CardTitle>
               <button
                 onClick={() => setStep("select")}
-                className="text-[12px] text-[#8b8fa8] hover:text-[#e8eaf0] flex items-center justify-center gap-2"
+                className="flex items-center gap-1.5 text-[12px] text-[#8b8fa8] hover:text-[#e8eaf0] transition-colors"
               >
-                <MoveLeft size={12} />
-                Back
+                <MoveLeft className="w-3.5 h-3.5" /> Back
               </button>
             </CardHeader>
+
             <CardBody className="flex flex-col gap-5">
-              {/* Fee summary */}
-              <div className="bg-[#161921] rounded-xl p-4">
-                <p className="text-xs text-[#8b8fa8] font-mono uppercase tracking-wide mb-1">
+              {/* Summary */}
+              <div className="bg-[#0f1420] rounded-xl p-4 border border-[rgba(255,255,255,0.06)]">
+                <p className="text-[10.5px] font-mono uppercase tracking-wide text-[#8b8fa8] mb-1">
                   Paying for
                 </p>
                 <p className="text-[15px] font-semibold">{selectedFee.label}</p>
@@ -218,34 +288,41 @@ export function PaymentPage() {
                   {selectedFee.description}
                 </p>
                 <div className="flex items-center justify-between mt-3 pt-3 border-t border-[rgba(255,255,255,0.06)]">
-                  <span className="text-sm text-[#8b8fa8]">Total</span>
-                  <span className="font-mono font-bold text-[20px] text-[#00e5a0]">
+                  <span className="text-[13px] text-[#8b8fa8]">
+                    Total amount
+                  </span>
+                  <span className="font-mono font-bold text-[22px] text-[#00e5a0]">
                     {formatXAF(selectedFee.amount)} CFA
                   </span>
                 </div>
               </div>
 
-              {/* Provider select */}
+              {/* Provider */}
               <div>
-                <p className="text-xs font-mono uppercase tracking-wide text-[#8b8fa8] mb-2.5">
-                  Payment provider
+                <p className="text-[11.5px] font-mono uppercase tracking-wide text-[#8b8fa8] mb-2.5">
+                  Payment method
                 </p>
-                <div className="grid grid-cols-1 gap-2.5">
-                  {(
-                    [
-                      {
-                        id: "mtn",
-                        label: "MTN MoMo",
-                        color: "#ffb53e",
-                        prefix: "677",
-                      },
-                    ] as const
-                  ).map((p) => (
+                <div className="flex flex-col gap-2">
+                  {[
+                    {
+                      id: "MTN" as MoMoProvider,
+                      label: "MTN Mobile Money",
+                      color: "#ffb53e",
+                      prefix: "67x / 68x",
+                    },
+                    {
+                      id: "Orange" as MoMoProvider,
+                      label: "Orange Money",
+                      color: "#ff7a00",
+                      prefix: "69x / 65x",
+                    },
+                  ].map((p) => (
                     <button
                       key={p.id}
+                      type="button"
                       onClick={() => setProvider(p.id)}
                       className={cn(
-                        "flex items-center gap-2.5 p-3 rounded-xl border transition-all duration-150",
+                        "flex items-center gap-3 p-3.5 rounded-xl border transition-all duration-150",
                         provider === p.id
                           ? "border-current bg-[rgba(255,255,255,0.04)]"
                           : "border-[rgba(255,255,255,0.07)] hover:border-[rgba(255,255,255,0.13)]",
@@ -253,9 +330,9 @@ export function PaymentPage() {
                       style={{ color: provider === p.id ? p.color : "#8b8fa8" }}
                     >
                       <Smartphone className="w-4 h-4 flex-shrink-0" />
-                      <div className="text-left">
+                      <div className="text-left flex-1">
                         <p
-                          className="text-[12.5px] font-semibold"
+                          className="text-[13px] font-semibold"
                           style={{
                             color: provider === p.id ? p.color : "#e8eaf0",
                           }}
@@ -263,41 +340,47 @@ export function PaymentPage() {
                           {p.label}
                         </p>
                         <p className="text-[10.5px] font-mono opacity-60">
-                          {p.prefix}…
+                          {p.prefix}
                         </p>
                       </div>
                       {provider === p.id && (
-                        <CheckCircle2 className="w-3.5 h-3.5 ml-auto flex-shrink-0" />
+                        <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
                       )}
                     </button>
                   ))}
                 </div>
               </div>
 
+              {/* Phone */}
               <Input
-                label="Mobile Number"
-                placeholder={provider === "mtn" ? "677 XXX XXX" : "699 XXX XXX"}
+                label="Phone Number"
+                type="tel"
+                placeholder={provider === "MTN" ? "677 000 000" : "699 000 000"}
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                onChange={(e) => validatePhone(e.target.value)}
                 icon={<Phone className="w-4 h-4" />}
+                error={phoneError}
+                maxLength={9}
               />
 
-              <div className="flex items-start gap-2 text-xs text-[#8b8fa8] bg-[rgba(0,229,160,0.05)] border border-[rgba(0,229,160,0.12)] rounded-lg p-3">
+              {/* Info box */}
+              <div className="flex items-start gap-2.5 bg-[rgba(0,229,160,0.05)] border border-[rgba(0,229,160,0.12)] rounded-xl p-3.5">
                 <CheckCircle2 className="w-3.5 h-3.5 text-[#00e5a0] mt-0.5 flex-shrink-0" />
-                <span>
-                  You will receive a notification on your phone. Confirm the
-                  payment to get your receipt.
-                </span>
+                <p className="text-[12px] text-[#8b8fa8] leading-relaxed">
+                  You will receive a prompt on your phone to confirm the
+                  payment. Your receipt will be ready instantly after
+                  confirmation.
+                </p>
               </div>
 
               <Button
                 onClick={handlePay}
-                loading={isLoading}
+                loading={isPending}
                 size="lg"
                 className="w-full justify-center"
               >
                 Pay {formatXAF(selectedFee.amount)} CFA via{" "}
-                {provider === "mtn" ? "MTN MoMo" : "Orange Money"}
+                {provider === "MTN" ? "MTN MoMo" : "Orange Money"}
               </Button>
             </CardBody>
           </Card>
