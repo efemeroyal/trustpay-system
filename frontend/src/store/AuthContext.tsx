@@ -14,16 +14,19 @@ interface AuthContextValue {
   token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  isReady: boolean;
   error: string | null;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<User | null>;
   register: (payload: {
     fullName: string;
     email: string;
     password: string;
-    studentId: string;
-    programme: string;
-    level: string;
-  }) => Promise<void>;
+    studentId?: string;
+    programme?: string;
+    level?: string;
+    department?: string;
+    role?: "student" | "admin";
+  }) => Promise<User | null>;
   logout: () => void;
   clearError: () => void;
   getProfile: () => Promise<User | null>;
@@ -44,35 +47,61 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.getItem("trustpay_token"),
   );
   const [isLoading, setIsLoading] = useState(false);
+  const [isReady, setIsReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const getProfile = useCallback(async () => {
-    if (!token) return null;
+  const getProfile = useCallback(
+    async (providedToken?: string | null) => {
+      const activeToken =
+        providedToken ?? token ?? localStorage.getItem("trustpay_token");
+      if (!activeToken) return null;
 
-    try {
-      const res = await authApi.getProfile();
-      setUser(res.data.data);
-      localStorage.setItem("trustpay_user", JSON.stringify(res.data.data));
-      return res.data.data;
-    } catch (err) {
-      setUser(null);
-      setToken(null);
-      localStorage.removeItem("trustpay_user");
-      localStorage.removeItem("trustpay_token");
-      return null;
-    }
-  }, [token]);
+      try {
+        localStorage.setItem("trustpay_token", activeToken);
+        const res = await authApi.getProfile();
+        setUser(res.data.data);
+        localStorage.setItem("trustpay_user", JSON.stringify(res.data.data));
+        return res.data.data;
+      } catch (err) {
+        setUser(null);
+        setToken(null);
+        localStorage.removeItem("trustpay_user");
+        localStorage.removeItem("trustpay_token");
+        return null;
+      }
+    },
+    [token],
+  );
 
   useEffect(() => {
-    if (token) {
+    let cancelled = false;
+
+    const initializeAuth = async () => {
+      setIsReady(false);
+
+      if (!token) {
+        setUser(null);
+        setIsReady(true);
+        wsManager.disconnect();
+        return;
+      }
+
       localStorage.setItem("trustpay_token", token);
       if (!user) {
-        getProfile();
+        await getProfile();
       }
-      wsManager.connect();
-    } else {
-      wsManager.disconnect();
-    }
+
+      if (!cancelled) {
+        setIsReady(true);
+        wsManager.connect();
+      }
+    };
+
+    void initializeAuth();
+
+    return () => {
+      cancelled = true;
+    };
   }, [token, user, getProfile]);
 
   const login = useCallback(
@@ -84,10 +113,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { token: newToken } = res.data.data;
         setToken(newToken);
         localStorage.setItem("trustpay_token", newToken);
-        const profile = await getProfile();
+        const profile = await getProfile(newToken);
         if (!profile) {
           throw new Error("Failed to load user profile");
         }
+        return profile;
       } catch (err: unknown) {
         const msg =
           (err as { response?: { data?: { message?: string } } })?.response
@@ -106,21 +136,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       fullName: string;
       email: string;
       password: string;
-      studentId: string;
-      programme: string;
-      level: string;
+      studentId?: string;
+      programme?: string;
+      level?: string;
+      department?: string;
+      role?: "student" | "admin";
     }) => {
       setIsLoading(true);
       setError(null);
       try {
-        const res = await authApi.register(payload);
+        const endpointPayload = { ...payload };
+        const res =
+          payload.role === "admin"
+            ? await authApi.registerAdmin({
+                fullName: payload.fullName,
+                email: payload.email,
+                password: payload.password,
+                department: payload.department ?? "Administration",
+              })
+            : await authApi.registerStudent({
+                fullName: payload.fullName,
+                email: payload.email,
+                password: payload.password,
+                studentId: payload.studentId ?? "",
+                programme: payload.programme ?? "",
+                level: payload.level ?? "",
+              });
         const { token: newToken } = res.data.data;
         setToken(newToken);
         localStorage.setItem("trustpay_token", newToken);
-        const profile = await getProfile();
+        const profile = await getProfile(newToken);
         if (!profile) {
           throw new Error("Failed to load user profile");
         }
+        return profile;
       } catch (err: unknown) {
         const msg =
           (err as { response?: { data?: { message?: string } } })?.response
@@ -149,6 +198,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         token,
         isAuthenticated: !!token && !!user,
         isLoading,
+        isReady,
         error,
         login,
         register,

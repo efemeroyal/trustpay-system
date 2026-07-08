@@ -6,10 +6,23 @@ import { useAuth } from "@/store/AuthContext";
 import { Button, Input, Card, CardBody } from "@/components/ui";
 
 export function LoginPage() {
-  const { login, isLoading, error, clearError, isAuthenticated } = useAuth();
+  const { login, isLoading, error, clearError, isAuthenticated, user } =
+    useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const from = (location.state as { from?: { pathname: string } })?.from?.pathname ?? "/dashboard";
+  const from =
+    (location.state as { from?: { pathname: string } })?.from?.pathname ??
+    "/dashboard";
+
+  const resolveDestination = (role?: string) => {
+    if (role === "admin") return "/admin/verify";
+
+    if (from && from !== "/login" && from !== "/register" && from !== "/") {
+      return from.startsWith("/admin") ? "/dashboard" : from;
+    }
+
+    return "/dashboard";
+  };
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -17,23 +30,28 @@ export function LoginPage() {
   const formRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (isAuthenticated) navigate(from, { replace: true });
-  }, [isAuthenticated, navigate, from]);
+    if (isAuthenticated && user) {
+      navigate(resolveDestination(user.role), { replace: true });
+    }
+  }, [isAuthenticated, user, navigate, from]);
 
   useEffect(() => {
-    gsap.fromTo(formRef.current,
+    gsap.fromTo(
+      formRef.current,
       { y: 16, opacity: 0 },
-      { y: 0, opacity: 1, duration: 0.5, ease: "power3.out" }
+      { y: 0, opacity: 1, duration: 0.5, ease: "power3.out" },
     );
   }, []);
 
-  useEffect(() => { if (error) clearError(); }, [email, password]);
+  useEffect(() => {
+    if (error) clearError();
+  }, [email, password]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await login(email, password);
-      navigate(from, { replace: true });
+      const profile = await login(email, password);
+      navigate(resolveDestination(profile?.role), { replace: true });
     } catch {}
   };
 
@@ -42,8 +60,12 @@ export function LoginPage() {
       <Card>
         <CardBody className="p-6">
           <div className="mb-6">
-            <h1 className="text-[20px] font-semibold tracking-tight">Sign in</h1>
-            <p className="text-[13px] text-[#8b8fa8] mt-1">Enter your registered email and password</p>
+            <h1 className="text-[20px] font-semibold tracking-tight">
+              Sign in
+            </h1>
+            <p className="text-[13px] text-[#8b8fa8] mt-1">
+              Enter your registered email and password
+            </p>
           </div>
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -59,7 +81,9 @@ export function LoginPage() {
             />
 
             <div className="flex flex-col gap-1.5">
-              <label className="text-[11.5px] font-mono uppercase tracking-wide text-[#8b8fa8]">Password</label>
+              <label className="text-[11.5px] font-mono uppercase tracking-wide text-[#8b8fa8]">
+                Password
+              </label>
               <div className="relative">
                 <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8b8fa8]" />
                 <input
@@ -76,7 +100,11 @@ export function LoginPage() {
                   onClick={() => setShowPass(!showPass)}
                   className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#3e4155] hover:text-[#8b8fa8]"
                 >
-                  {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  {showPass ? (
+                    <EyeOff className="w-4 h-4" />
+                  ) : (
+                    <Eye className="w-4 h-4" />
+                  )}
                 </button>
               </div>
             </div>
@@ -87,14 +115,21 @@ export function LoginPage() {
               </div>
             )}
 
-            <Button type="submit" size="lg" loading={isLoading} className="w-full justify-center mt-1">
+            <Button
+              type="submit"
+              size="lg"
+              loading={isLoading}
+              className="w-full justify-center mt-1"
+            >
               Sign In
             </Button>
           </form>
 
           <p className="text-[12.5px] text-[#8b8fa8] text-center mt-5">
             New student?{" "}
-            <Link to="/register" className="text-[#00e5a0] hover:underline">Create account</Link>
+            <Link to="/register" className="text-[#00e5a0] hover:underline">
+              Create account
+            </Link>
           </p>
         </CardBody>
       </Card>

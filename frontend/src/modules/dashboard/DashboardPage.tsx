@@ -177,7 +177,7 @@ export function DashboardPage() {
               </Link>
             </div>
           ) : (
-            <div className="divide-y divide-[rgba(255,255,255,0.04)]">
+            <div className="max-h-[320px] overflow-y-auto divide-y divide-[rgba(255,255,255,0.04)]">
               {recentPayments.map((p) => (
                 <PaymentRow key={p._id} payment={p} />
               ))}

@@ -73,7 +73,10 @@ export interface Receipt {
   academicYear: string;
   level: string;
   isVerified: boolean;
+  verificationStatus?: "pending" | "validated" | "rejected";
   verifiedAt?: string;
+  rejectedAt?: string;
+  rejectionReason?: string;
   createdAt: string;
   sbt?: {
     tokenId?: string;

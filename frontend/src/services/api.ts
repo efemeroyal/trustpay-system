@@ -31,16 +31,37 @@ api.interceptors.response.use(
       window.location.href = "/login";
     }
     return Promise.reject(err);
-  }
+  },
 );
 
 export const authApi = {
   login: (email: string, password: string) =>
-    api.post<ApiResponse<User & { token: string }>>("/auth/login", { email, password }),
-  register: (payload: {
-    fullName: string; email: string; password: string;
-    studentId: string; programme: string; level: string;
-  }) => api.post<ApiResponse<User & { token: string }>>("/auth/register/student", payload),
+    api.post<ApiResponse<User & { token: string }>>("/auth/login", {
+      email,
+      password,
+    }),
+  registerStudent: (payload: {
+    fullName: string;
+    email: string;
+    password: string;
+    studentId: string;
+    programme: string;
+    level: string;
+  }) =>
+    api.post<ApiResponse<User & { token: string }>>(
+      "/auth/register/student",
+      payload,
+    ),
+  registerAdmin: (payload: {
+    fullName: string;
+    email: string;
+    password: string;
+    department: string;
+  }) =>
+    api.post<ApiResponse<User & { token: string }>>(
+      "/auth/register/admin",
+      payload,
+    ),
   getProfile: () => api.get<ApiResponse<User>>("/auth/profile"),
 };
 

@@ -1,5 +1,14 @@
-type WsEventType = "mint_complete" | "payment_confirmed" | "tx_failed" | "ping";
-interface WsMessage { type: WsEventType; payload: Record<string, unknown>; }
+type WsEventType =
+  | "mint_complete"
+  | "payment_confirmed"
+  | "tx_failed"
+  | "receipt_validated"
+  | "receipt_rejected"
+  | "ping";
+interface WsMessage {
+  type: WsEventType;
+  payload: Record<string, unknown>;
+}
 type Listener = (payload: Record<string, unknown>) => void;
 
 class WebSocketManager {
@@ -9,7 +18,9 @@ class WebSocketManager {
   private url: string;
   private shouldReconnect = false;
 
-  constructor(url: string) { this.url = url; }
+  constructor(url: string) {
+    this.url = url;
+  }
 
   connect() {
     if (this.ws?.readyState === WebSocket.OPEN) return;
@@ -17,9 +28,13 @@ class WebSocketManager {
     try {
       this.ws = new WebSocket(this.url);
       this.ws.onmessage = (e) => this.handleMessage(e);
-      this.ws.onclose = () => { if (this.shouldReconnect) this.scheduleReconnect(); };
+      this.ws.onclose = () => {
+        if (this.shouldReconnect) this.scheduleReconnect();
+      };
       this.ws.onerror = () => {};
-    } catch { this.scheduleReconnect(); }
+    } catch {
+      this.scheduleReconnect();
+    }
   }
 
   private handleMessage(e: MessageEvent) {
@@ -52,5 +67,5 @@ class WebSocketManager {
 }
 
 export const wsManager = new WebSocketManager(
-  import.meta.env.VITE_WS_URL ?? "ws://localhost:5000"
+  import.meta.env.VITE_WS_URL ?? "ws://localhost:5000",
 );
