@@ -1,66 +1,78 @@
-# TrustPay — Frontend
+# TrustPay Frontend
 
-Blockchain-based payment verification UI for University of Buea.
+This is the React + TypeScript web app for TrustPay. It provides the student dashboard, payment flow, receipt history, admin verification tools, and realtime notifications.
 
-## Stack
-- **React 18 + TypeScript** — Component framework
-- **Vite** — Build tool
-- **Tailwind CSS** — Utility-first styling
-- **GSAP** — Animations (page transitions, minting ceremony, stagger reveals)
-- **Viem** — Type-safe Ethereum/Polygon interaction
-- **Polygon Amoy Testnet** — ERC-5192 Soulbound Token deployment
+## What it includes
 
-## Project Structure
-```
+- Student login and registration
+- Admin login and admin signup
+- Fee payment experience with receipt generation
+- Receipt view with verification status
+- Admin QR-based verification workflow
+- Realtime notifications for payments, minting, and verification outcomes
+
+## Tech stack
+
+- React 18
+- TypeScript
+- Vite
+- Tailwind CSS
+- TanStack React Query
+- GSAP
+- React Router
+- Axios
+- WebSocket client
+
+## Project structure
+
+```text
 src/
-├── components/
-│   ├── ui/          # Badge, Button, Card, Input, StatCard, Toast
-│   └── layout/      # Topbar, Sidebar, AppShell
-├── modules/
-│   ├── auth/        # LoginPage
-│   ├── dashboard/   # DashboardPage (stats, tx list, chain activity)
-│   ├── payment/     # PaymentPage (fee selector + MoMo confirm)
-│   ├── minting/     # MintingScreen (GSAP ceremony)
-│   ├── vault/       # VaultPage (SBT cards), ReceiptsPage (tx history)
-│   ├── admin/       # AdminDashboard (verify by student/wallet)
-│   ├── chain/       # ChainActivityPage
-│   └── settings/    # SettingsPage
-├── services/
-│   ├── contractService.ts  # viem — Polygon reads/writes
-│   ├── api.ts              # Axios — REST backend calls
-│   └── websocket.ts        # WS manager for real-time updates
-├── store/           # React Context (Auth, Payment, Notifications)
-├── types/           # All TypeScript interfaces
-└── utils/           # Formatting, fee catalog, helpers
+  components/ui/
+  layouts/
+  modules/
+    auth/
+    dashboard/
+    payment/
+    receipts/
+    settings/
+    admin/
+  routes/
+  services/
+  store/
+  types/
+  utils/
 ```
 
-## Quick Start
+## Run locally
+
 ```bash
-cp .env.example .env      # Fill in your contract address + RPC
 npm install
 npm run dev
 ```
 
-## Environment Variables
+## Environment variables
+
+Create a `.env` file in this folder with:
+
+```env
+VITE_API_URL=http://localhost:5000/api
+VITE_WS_URL=ws://localhost:5000
 ```
-VITE_CONTRACT_ADDRESS=0x...   # Deployed ERC-5192 contract on Amoy
-VITE_RPC_URL=https://rpc-amoy.polygon.technology
-VITE_API_URL=http://localhost:3001/api
-VITE_WS_URL=ws://localhost:3001
-```
 
-## Demo Login
-Any Student ID (6+ characters) + any password. Prefill: `UB22CS041`
+## Authentication flow
 
-## Connecting to the Backend
-The frontend expects a Node.js/Express backend at `VITE_API_URL` with:
-- `POST /api/auth/login` → `{ token, student }`
-- `POST /api/payment/initiate` → `{ referenceId }`
-- `GET  /api/payment/status/:id` → `{ status, momoRef }`
-- `POST /api/mint` → `{ txHash, tokenId, ipfsCid }`
-- `GET  /api/receipts/:studentId` → `SBTReceipt[]`
-- `GET  /api/admin/verify/student/:id` → `SBTReceipt[]`
+- Students sign up and are redirected to the student dashboard.
+- Admins sign up and are redirected to the admin area.
+- Login uses the backend JWT authentication flow and stores the token in local storage.
 
-## Viem Usage
-All Polygon reads use `publicClient` from `contractService.ts`.
-Writes require MetaMask — call `connectWallet()` then `getWalletClient()`.
+## Admin verification flow
+
+The admin verification page supports:
+
+- manual receipt lookup
+- QR scanning via the device camera
+- validation and rejection results that are surfaced back to the student view
+
+## Notes
+
+The frontend expects the backend to be running and reachable at the configured API URL.
